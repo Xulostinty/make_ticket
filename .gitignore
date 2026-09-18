@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+
+# 生成产物
+ticket.pdf
+ticket.png
+*.ticket.pdf
+*.ticket.png
