@@ -157,9 +157,10 @@ LAYOUT = {
     "price_yen":  (104.52, 0.7306, 162.48, 554.41, "Sun", "￥"),
     "price_int":  (100.66, 1.0695, 243.57, 552.74, "CoreDS", "235."),
     "price_dec":  (100.83, 1.1328, 430.06, 552.75, "CoreDS", "0"),
-    "price_yuan": (62.48, 0.7160, 482.57, 543.68, "ZS", "元"),
+    "price_yuan": (62.51, 1.0896, 481.80, 543.67, "ZS", "元"),
     "seat_class": (83.20, 1.0040, 1476.29, 541.60, "ZS", "二等座"),
     "notice":     (82.34, 1.0328, 138.82, 745.45, "ZS", "仅供报销使用"),
+    "refund_fee": (82.34, 1.0328, 138.82, 637.45, "ZS", "退票费"),
     "id":         (105.06, 0.9869, 131.52, 872.69, "CoreDS", "1101011990****1234"),
     "name":       (94.88, 1.0029, 1006.14, 862.89, "ZS", "张三"),
     "box1a":      (65.03, 1.0313, 531.13, 965.00, "ZS", "报销凭证"),
@@ -233,6 +234,7 @@ class Ticket:
         self.id_no = kw.get("id_no", "1101011990****1234")
         self.serial = kw.get("serial", "12345678901234567890123")
         self.serial_suffix = kw.get("serial_suffix", "JM")
+        self.refund_fee = kw.get("refund_fee")
         self.qr_data = kw.get("qr_data")
         self.qr_image = kw.get("qr_image")
         self.texture = bool(kw.get("texture", True))
@@ -266,6 +268,7 @@ class Ticket:
             id_no=d.get("id_no") or "1101011990****1234",
             serial=d.get("eticket_no") or "",
             serial_suffix="",
+            refund_fee=d.get("refund_fee"),
             qr_image=d.get("qr") if use_qr_image else None,
             texture=True,
         )
@@ -356,6 +359,20 @@ def parse_invoice(path):
             d["seat"], d["seat_suffix"] = "", rest
     else:
         d["coach"], d["seat"], d["seat_suffix"] = None, None, None
+
+    # 退票费: 定位"退票费"标签词, 取同一行右侧的金额词; 仅出现标签无金额时记为 0
+    d["refund_fee"] = None
+    for (wx0, wy0, wx1, wy1, w) in words:
+        if w.startswith("退票费"):
+            fee = None
+            for (ax0, ay0, ax1, ay1, aw) in words:
+                if ax0 > wx0 and abs(ay0 - wy0) <= 12:
+                    mm = re.fullmatch(r"[¥￥](\d+(?:\.\d{1,2})?)", aw)
+                    if mm:
+                        fee = float(mm.group(1))
+                        break
+            d["refund_fee"] = fee if fee is not None else 0.0
+            break
 
     m = re.search(r"[¥￥](\d+(?:\.\d{1,2})?)", flat)
     d["price"] = float(m.group(1)) if m else None
@@ -628,8 +645,15 @@ def build_ticket(t: Ticket, out_path: str):
         size_px, sxf, _, _, font_key, ref = LAYOUT[key]
         return advance_px(text, size_px, sxf, font_key) - advance_px(ref, size_px, sxf, font_key)
 
-    d_name = width_delta("from_name", t.from_station)
-    d_namer = width_delta("to_name", t.to_station)
+    # 两字站名: 中间加一字宽空格
+    from_name_s = t.from_station[0] + "\u3000" + t.from_station[1] if len(t.from_station) == 2 else t.from_station
+    to_name_s = t.to_station[0] + "\u3000" + t.to_station[1] if len(t.to_station) == 2 else t.to_station
+    # 四字站名: "站"略微右移
+    from_zhan_slip = 12.0 if len(t.from_station) == 4 else 0.0
+    to_zhan_slip = 12.0 if len(t.to_station) == 4 else 0.0
+
+    d_name = width_delta("from_name", from_name_s)
+    d_namer = width_delta("to_name", to_name_s)
     d_coach = width_delta("coach", coach_new)
     d_seat = width_delta("seat", seat_new)
     d_id = width_delta("id", t.id_no)
@@ -646,12 +670,12 @@ def build_ticket(t: Ticket, out_path: str):
     train_font = LAYOUT["train_no"][4]
     d_train = (advance_px(train_ref, LAYOUT["train_no"][0], LAYOUT["train_no"][1], train_font)
                - advance_px(t.train_no, LAYOUT["train_no"][0], LAYOUT["train_no"][1], train_font)) / 2
-    draw_text(c, t.from_station, "from_name")
-    draw_text(c, "站", "from_zhan", dx=d_name)
+    draw_text(c, from_name_s, "from_name")
+    draw_text(c, "站", "from_zhan", dx=d_name + from_zhan_slip)
     draw_text(c, t.from_pinyin, "from_py", dx=d_name / 2)
     draw_text(c, t.train_no, "train_no", dx=d_train)
-    draw_text(c, t.to_station, "to_name", dx=-d_namer)
-    draw_text(c, "站", "to_zhan")
+    draw_text(c, to_name_s, "to_name", dx=-d_namer)
+    draw_text(c, "站", "to_zhan", dx=to_zhan_slip)
     draw_text(c, t.to_pinyin, "to_py", dx=-d_namer / 2)
 
     draw_text(c, "%04d" % date.year, "date_y")
@@ -671,19 +695,24 @@ def build_ticket(t: Ticket, out_path: str):
         suffix_dx = 0.0 if seat_new else LAYOUT["seat"][2] - LAYOUT["seat_hao"][2]
         draw_text(c, t.seat_suffix, "seat_hao", dx=suffix_dx)
 
+    # 金额自 ￥ 起向左对齐流动, "元"跟随金额字符数移动
     yuan = int(abs(t.price))
     dec = int(round(abs(t.price) * 10)) % 10
     d_price = width_delta("price_int", "%d." % yuan)
+    d_dec = (advance_px("%d" % dec, LAYOUT["price_dec"][0], LAYOUT["price_dec"][1], LAYOUT["price_dec"][4])
+             - advance_px("0", LAYOUT["price_dec"][0], LAYOUT["price_dec"][1], LAYOUT["price_dec"][4]))
     draw_text(c, "￥", "price_yen")
-    draw_text(c, "%d." % yuan, "price_int", dx=-d_price)
-    draw_text(c, "%d" % dec, "price_dec")
-    draw_text(c, "元", "price_yuan")
+    draw_text(c, "%d." % yuan, "price_int")
+    draw_text(c, "%d" % dec, "price_dec", dx=d_price)
+    draw_text(c, "元", "price_yuan", dx=d_price + d_dec)
     class_font = LAYOUT["seat_class"][4]
     d_class = advance_px(t.seat_class, LAYOUT["seat_class"][0], LAYOUT["seat_class"][1], class_font) - \
         advance_px("二等座", LAYOUT["seat_class"][0], LAYOUT["seat_class"][1], class_font)
     draw_text(c, t.seat_class, "seat_class", dx=-d_class)
 
     draw_text(c, "仅供报销使用", "notice")
+    if t.refund_fee is not None:
+        draw_text(c, "退票费", "refund_fee")
     draw_text(c, t.id_no, "id")
     draw_text(c, t.passenger, "name", dx=d_id)
     draw_circles(c, t)
