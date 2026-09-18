@@ -323,7 +323,7 @@ def parse_invoice(path):
         d["from_station"] = d["to_station"] = None
         fx = tx = None
 
-    latin = [(x0, y0, x1, y1, w) for (x0, y0, x1, y1, w) in words if re.fullmatch(r"[A-Za-z]{2,20}", w)]
+    latin = [(x0, y0, x1, y1, w) for (x0, y0, x1, y1, w) in words if re.fullmatch(r"[A-Za-z]{1,20}", w)]
     latin.sort(key=lambda t: (round(t[1] / 4), t[0]))
     tokens = []
     for (x0, y0, x1, y1, w) in latin:
@@ -672,6 +672,19 @@ def build_ticket(t: Ticket, out_path: str):
     train_font = LAYOUT["train_no"][4]
     d_train = (advance_px(train_ref, LAYOUT["train_no"][0], LAYOUT["train_no"][1], train_font)
                - advance_px(t.train_no, LAYOUT["train_no"][0], LAYOUT["train_no"][1], train_font)) / 2
+
+    # 防重叠: 长站名/长车次时, 车次在两侧站名之间的空隙内移动
+    train_adv = advance_px(t.train_no, LAYOUT["train_no"][0], LAYOUT["train_no"][1], train_font)
+    train_left = LAYOUT["train_no"][2] + d_train
+    gap_l = (LAYOUT["from_zhan"][2] + d_name + from_zhan_slip
+             + advance_px("站", LAYOUT["from_zhan"][0], LAYOUT["from_zhan"][1], LAYOUT["from_zhan"][4])
+             + 30.0)
+    gap_r = LAYOUT["to_name"][2] - d_namer - 30.0
+    if train_left < gap_l or train_left + train_adv > gap_r:
+        if gap_r - gap_l >= train_adv:
+            d_train = (gap_l + gap_r) / 2 - LAYOUT["train_no"][2] - train_adv / 2
+        else:
+            d_train = gap_r - train_adv - LAYOUT["train_no"][2]
     draw_text(c, from_name_s, "from_name")
     draw_text(c, "站", "from_zhan", dx=d_name + from_zhan_slip)
     draw_text(c, t.from_pinyin, "from_py", dx=d_name / 2)
