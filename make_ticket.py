@@ -10,6 +10,7 @@
 
 用法:
     python make_ticket.py                        # 用默认数据生成 YYYYMMDD_车次_pic.pdf
+    python make_ticket.py --png-only             # 只输出 PNG(不保留 PDF, 圆角外透明)
     python make_ticket.py -o my.pdf              # 指定输出文件
     python make_ticket.py --json data.json       # 从 JSON 读入字段值
     python make_ticket.py --preview              # 同时输出 PNG 预览
@@ -25,6 +26,7 @@ import io
 import json
 import os
 import re
+import tempfile
 
 from reportlab.lib.colors import Color
 from reportlab.pdfbase import pdfmetrics
@@ -658,8 +660,8 @@ def build_ticket(t: Ticket, out_path: str):
     d_seat = width_delta("seat", seat_new)
     d_id = width_delta("id", t.id_no)
 
-    red_size, red_sx = fit_scale(t.ticket_no, "red")
-    draw_text(c, t.ticket_no, "red", RED, size=red_size, sx=red_sx)
+    # 红票号不压缩: 按版面字号自然绘制(发票 20 位号码会自然向右延伸)
+    draw_text(c, t.ticket_no, "red", RED)
     if t.gate is not None:
         draw_text(c, "检票", "gate_cn")
         draw_text(c, ":", "gate_colon")
@@ -737,18 +739,45 @@ def build_ticket(t: Ticket, out_path: str):
     c.save()
 
 
-def render_preview(pdf_path, png_path, target_w=2046):
+def render_preview(pdf_path, png_path, target_w=2046, transparent=True):
     try:
         import fitz
     except ImportError:
         print("未安装 PyMuPDF, 跳过预览")
         return
     doc = fitz.open(pdf_path)
-    page = doc.load_page(0)
-    zoom = target_w / page.rect.width
-    pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=False)
-    pix.save(png_path)
-    doc.close()
+    try:
+        page = doc.load_page(0)
+        zoom = target_w / page.rect.width
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom), alpha=transparent)
+        pix.save(png_path)
+    finally:
+        doc.close()
+
+
+def write_output(t, out, png_only=False, preview=False):
+    """按选项输出: 常规 PDF(+可选PNG) 或 仅 PNG(临时 PDF 渲染后删除)"""
+    out_dir = os.path.dirname(os.path.abspath(out))
+    os.makedirs(out_dir, exist_ok=True)
+    png = os.path.splitext(out)[0] + ".png"
+    if png_only:
+        fd, tmp = tempfile.mkstemp(suffix=".pdf")
+        os.close(fd)
+        try:
+            build_ticket(t, tmp)
+            render_preview(tmp, png, transparent=True)
+        finally:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+        print("已生成:", png)
+        return
+    build_ticket(t, out)
+    print("已生成:", out)
+    if preview:
+        render_preview(out, png, transparent=True)
+        print("已生成预览:", png)
 
 
 def default_filename(t):
@@ -768,6 +797,8 @@ def main(argv=None):
                     help="从电子发票(铁路电子客票) PDF 生成, 可多个文件或通配符")
     ap.add_argument("--outdir", help="电子发票批量模式的输出目录(默认与发票同目录)")
     ap.add_argument("--preview", action="store_true", help="同时生成 PNG 预览")
+    ap.add_argument("--png-only", action="store_true",
+                    help="只输出 PNG(不保留 PDF), 圆角外透明")
     ap.add_argument("--no-texture", action="store_true", help="不绘制纸张纹理")
     ap.add_argument("--no-invoice-qr", action="store_true", help="不使用发票内二维码图, 改用程序生成")
     args = ap.parse_args(argv)
@@ -797,24 +828,14 @@ def main(argv=None):
             else:
                 outdir = args.outdir or os.path.dirname(os.path.abspath(path))
                 out = os.path.join(outdir, default_filename(ticket))
-            build_ticket(ticket, out)
-            print("已生成:", out)
-            if args.preview:
-                png = os.path.splitext(out)[0] + ".png"
-                render_preview(out, png)
-                print("已生成预览:", png)
+            write_output(ticket, out, png_only=args.png_only, preview=args.preview)
         return
 
     ticket = Ticket.from_json(args.json) if args.json else Ticket()
     if args.no_texture:
         ticket.texture = False
     out = args.out or args.output or default_filename(ticket)
-    build_ticket(ticket, out)
-    print("已生成:", out)
-    if args.preview:
-        png = os.path.splitext(out)[0] + ".png"
-        render_preview(out, png)
-        print("已生成预览:", png)
+    write_output(ticket, out, png_only=args.png_only, preview=args.preview)
 
 
 if __name__ == "__main__":

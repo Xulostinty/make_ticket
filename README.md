@@ -18,6 +18,7 @@
   - `--json` 从 JSON 文件读取
   - `--invoice` 从电子发票（铁路电子客票）PDF 自动解析
 - 自动识别发票中的退票费并显示（"仅供报销使用"上方一行）
+- 支持只输出 PNG（圆角外透明，RGBA）
 - 可关闭纸张纹理、可选用发票内二维码图片
 
 ## 环境依赖
@@ -40,6 +41,10 @@ python make_ticket.py
 
 # 指定输出并同时生成 PNG 预览
 python make_ticket.py -o my.pdf --preview
+
+# 只输出 PNG(不保留 PDF, 圆角外透明)
+python make_ticket.py --png-only
+python make_ticket.py --invoice 车票/*.pdf --outdir out --png-only
 
 # 从 JSON 读入票面字段
 python make_ticket.py --json data.json
