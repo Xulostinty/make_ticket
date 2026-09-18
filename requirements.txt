@@ -1,0 +1,11 @@
+# 必需: PDF 生成
+reportlab>=3.6
+
+# 二维码绘制
+qrcode>=7.0
+
+# 纸张纹理 / 二维码透明化 (缺失时自动跳过)
+pillow>=9.0
+
+# PNG 预览与电子发票解析 (缺失时 preview/invoice 功能不可用)
+PyMuPDF>=1.20

@@ -79,10 +79,9 @@ JSON 可用字段（与 `Ticket` 类一致）：
 | 检票口 / 底部序列号 | Cambria |
 | 红票号 | 黑体 SimHei |
 
-`fonts/` 目录附带两个可自由分发的字体：
+`fonts/` 目录附带可自由分发的字体：
 
 - **Core Sans DS 35 Regular**（S-Core）
-- **OCR-B**（CTAN `ocr-b-outline`，Norbert Schwarz / Z. Wagner）
 
 其余字体调用系统字体（Windows 自带），非 Windows 环境会自动回退到相近字体。
 

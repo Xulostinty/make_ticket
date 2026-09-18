@@ -65,10 +65,6 @@ FONTS = {
         (r"C:\Windows\Fonts\simsun.ttc", 0),
         (r"/usr/share/fonts/fonts-go/STZhongsong.ttf", 0),
     ],
-    "OCRB": [
-        (os.path.join(HERE, "fonts", "OCRB.ttf"), 0),
-        (r"C:\Windows\Fonts\OCRB.ttf", 0),
-    ],
     "CoreDS": [
         (os.path.join(HERE, "fonts", "CoreSansDS35Regular.ttf"), 0),
         (r"C:\Windows\Fonts\CoreSansDS35Regular.ttf", 0),
@@ -126,7 +122,7 @@ CR_TINT = Color(184 / 255, 210 / 255, 240 / 255)
 #   站名拼音        = Times New Roman
 # 描边宽度为字号的比例(0 表示标准字重不加描边)
 STROKE_BY_FONT = {"Sun": 0.028, "Hei": 0.020, "HeiR": 0.0, "ZS": 0.0,
-                  "OCRB": 0.0, "CoreDS": 0.0, "Times": 0.022, "Camb": 0.008}
+                  "CoreDS": 0.0, "Times": 0.022, "Camb": 0.008}
 RED_STROKE = 0.016
 
 # 逐字符字距(页面px): 数字紧凑, 接近原图几乎无字间距的效果
