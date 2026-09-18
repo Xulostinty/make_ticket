@@ -35,7 +35,7 @@ pip install reportlab qrcode pillow pymupdf
 ## 用法
 
 ```bash
-# 默认虚构数据 -> ticket.pdf
+# 默认虚构数据 -> 20250623_G46_pic.pdf (YYYYMMDD_车次[_T]_pic.pdf)
 python make_ticket.py
 
 # 指定输出并同时生成 PNG 预览
@@ -45,11 +45,21 @@ python make_ticket.py -o my.pdf --preview
 python make_ticket.py --json data.json
 
 # 从电子发票 PDF 生成（支持多张/通配符），输出到指定目录
+# 默认输出名为 YYYYMMDD_车次[_T]_pic.pdf
 python make_ticket.py --invoice 车票/*.pdf --outdir out --preview
 
 # 不绘制纸张纹理 / 不使用发票内二维码（改用程序生成）
 python make_ticket.py --no-texture
 python make_ticket.py --invoice a.pdf --no-invoice-qr
+```
+
+### 发票批量重命名
+
+将电子发票 PDF 重命名为 `YYYYMMDD_车次.pdf`，退票发票为 `YYYYMMDD_车次_T.pdf`：
+
+```bash
+python rename_invoices.py "车票目录" -n   # 预览
+python rename_invoices.py "车票目录"      # 执行
 ```
 
 JSON 可用字段（与 `Ticket` 类一致）：

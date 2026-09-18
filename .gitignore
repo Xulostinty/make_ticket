@@ -4,5 +4,7 @@ __pycache__/
 # 生成产物
 ticket.pdf
 ticket.png
+*_pic.pdf
+*_pic.png
 *.ticket.pdf
 *.ticket.png

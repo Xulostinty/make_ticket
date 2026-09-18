@@ -9,7 +9,7 @@
 生成时按比例缩放到 85.6mm 宽的卡片, 输出矢量 PDF。
 
 用法:
-    python make_ticket.py                        # 用默认数据生成 ticket.pdf
+    python make_ticket.py                        # 用默认数据生成 YYYYMMDD_车次_pic.pdf
     python make_ticket.py -o my.pdf              # 指定输出文件
     python make_ticket.py --json data.json       # 从 JSON 读入字段值
     python make_ticket.py --preview              # 同时输出 PNG 预览
@@ -167,7 +167,7 @@ LAYOUT = {
     "box1b":      (64.89, 1.0365, 826.38, 964.76, "ZS", "遗失不补"),
     "box2":       (70.68, 0.9559, 474.65, 1056.67, "ZS", "退票改签时须交回车站"),
     "serial":     (85.04, 0.8105, 127.00, 1207.32, "Camb", "12345678901234567890123"),
-    "serial_jm":  (67.67, 1.0000, 973.03, 1194.15, "Camb", "JM"),
+    "serial_jm":  (67.67, 1.0000, 1047.71, 1194.15, "Camb", "JM"),
     "mark_xue":   (90.71, 1.0000, 852.65, 545.39, "ZS", "学"),
     "mark_hui":   (90.41, 1.0000, 983.75, 546.66, "ZS", "惠"),
 }
@@ -751,9 +751,17 @@ def render_preview(pdf_path, png_path, target_w=2046):
     doc.close()
 
 
+def default_filename(t):
+    """默认输出文件名: YYYYMMDD_车次[_T]_pic.pdf (T 表示含退票费)"""
+    return "%04d%02d%02d_%s%s_pic.pdf" % (
+        t.depart.year, t.depart.month, t.depart.day, t.train_no,
+        "_T" if t.refund_fee is not None else "")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="按参考图版面生成铁路电子客票报销凭证 PDF")
-    ap.add_argument("output", nargs="?", default="ticket.pdf", help="输出 PDF 路径(默认模式)")
+    ap.add_argument("output", nargs="?", default=None,
+                    help="输出 PDF 路径(默认 YYYYMMDD_车次[_T]_pic.pdf)")
     ap.add_argument("-o", "--out", help="输出 PDF 路径(单张)或输出目录(批量)")
     ap.add_argument("--json", help="从 JSON 文件读取票面数据")
     ap.add_argument("--invoice", nargs="+", metavar="PDF",
@@ -784,12 +792,11 @@ def main(argv=None):
                 continue
             if args.no_texture:
                 ticket.texture = False
-            stem = os.path.splitext(os.path.basename(path))[0]
             if args.out and len(paths) == 1:
                 out = args.out
             else:
                 outdir = args.outdir or os.path.dirname(os.path.abspath(path))
-                out = os.path.join(outdir, stem + ".ticket.pdf")
+                out = os.path.join(outdir, default_filename(ticket))
             build_ticket(ticket, out)
             print("已生成:", out)
             if args.preview:
@@ -798,10 +805,10 @@ def main(argv=None):
                 print("已生成预览:", png)
         return
 
-    out = args.out or args.output
     ticket = Ticket.from_json(args.json) if args.json else Ticket()
     if args.no_texture:
         ticket.texture = False
+    out = args.out or args.output or default_filename(ticket)
     build_ticket(ticket, out)
     print("已生成:", out)
     if args.preview:
