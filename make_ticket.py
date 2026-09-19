@@ -10,10 +10,10 @@
 
 用法:
     python make_ticket.py                        # 用默认数据生成 YYYYMMDD_车次_pic.pdf
-    python make_ticket.py --png-only             # 只输出 PNG(不保留 PDF, 圆角外透明)
     python make_ticket.py -o my.pdf              # 指定输出文件
     python make_ticket.py --json data.json       # 从 JSON 读入字段值
     python make_ticket.py --preview              # 同时输出 PNG 预览
+    python make_ticket.py --png-only             # 只输出 PNG(不保留 PDF, 圆角外透明)
 
     # 从电子发票(铁路电子客票)生成:
     python make_ticket.py --invoice a.pdf b.pdf --preview
@@ -71,6 +71,11 @@ FONTS = {
         (os.path.join(HERE, "fonts", "CoreSansDS35Regular.ttf"), 0),
         (r"C:\Windows\Fonts\CoreSansDS35Regular.ttf", 0),
     ],
+    # 自制数字字体: 按参考图逐字形重建 (0-9 与 '*')
+    # (tools/glyph_shapes.py 定义中心线结构, tools/fit_struct.py 拟合, tools/trace_centerline.py 建库)
+    "Digits": [
+        (os.path.join(HERE, "fonts", "CRTicketDigits.ttf"), 0),
+    ],
     "Times": [
         (r"C:\Windows\Fonts\times.ttf", 0),
         (r"/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", 0),
@@ -118,18 +123,43 @@ CR_TINT = Color(184 / 255, 210 / 255, 240 / 255)
 #   其余汉字        = 华文中宋 STZhongsong 标准
 #   车次           = Times New Roman
 #   ￥            = 宋体 SimSun
-#   日期/时间/座位/票价/证件号数字 = Core Sans DS 35 Regular(不描边, 字距收紧 -6~-6.5px)
+#   日期/时间/座位/票价/证件号数字 = 自制数字字体 Digits(描摹自参考图, 见 fonts/CRTicketDigits.ttf)
 #   "元" 与 年/月/日 同高; "学"/"惠" 放大撑满圆圈; JM 正常比例(不横向拉伸)
 #   检票口/底部序列号 = Cambria(替代原衬线数字)
 #   站名拼音        = Times New Roman
+#   数字字段里的非数字字符: '.' ':' = Core Sans DS 35; 座位号的 'F' = 华文中宋
+
+# 自制数字字体的字符集: 只做了 0-9 与 '*' (其余字符由 FALLBACK 指定的字体渲染)
+DIGIT_FONT = "Digits"
+DIGIT_CHARS = set("0123456789*")
+# 回退字符: 字符 -> (字体键, 对齐微调em, 字号缩放)
+#   对齐微调 = 参考图里该字符的实际位置 与 回退字体自然位置之差, 由
+#   tools/recal_digits.py 标定得出 (华文中宋的拉丁字母按全宽字位设计,
+#   左边距远大于参考图, 不修正会右移 20+px)。
+#   字号缩放: 参考图里座位号字母明显比数字矮 (F 墨高 57px vs 数字 75px, 比值 0.76),
+#   而华文中宋 F 的墨高是 0.681em、自制数字是 0.744em, 同字号下 F 会高出 20%,
+#   所以缩放 0.76*0.744/0.681 = 0.830。
+FALLBACK = {
+    ".": ("CoreDS", 0.000, 1.000),
+    ":": ("CoreDS", 0.060, 1.000),
+    "F": ("ZS", 0.022, 0.830),
+}
+# 表里没列出的非数字字符一律回退到华文中宋: 座位号字母不只 F (还有 A/B/C/D),
+# 漏掉就会渲染成空白 (曾出现 "09D号" 只剩 "09 号")。
+FALLBACK_DEFAULT = ("ZS", 0.022, 0.830)
+
 # 描边宽度为字号的比例(0 表示标准字重不加描边)
 STROKE_BY_FONT = {"Sun": 0.028, "Hei": 0.020, "HeiR": 0.0, "ZS": 0.0,
-                  "CoreDS": 0.0, "Times": 0.022, "Camb": 0.008}
+                  "OCRB": 0.0, "CoreDS": 0.0, "Digits": 0.0,
+                  "Times": 0.022, "Camb": 0.008}
 RED_STROKE = 0.016
 
-# 逐字符字距(页面px): 数字紧凑, 接近原图几乎无字间距的效果
-TRACKING = {"date_y": -6.5, "date_m": -6.0, "date_d": -6.0, "date_hm": -6.5,
-            "coach": -6.5, "seat": -6.5, "price_int": -6.0, "price_dec": -6.0, "id": -6.5}
+# 逐字符字距(页面px)。数字字段的值为"参考图实测字距 - 自制字体字距",
+# 由 tools/recal_digits.py 逐字段标定(参考图各字段墨高 75~81px 而字距未同比放大,
+# 这个差只能靠字距表达; 用横向缩放(sx)去凑会把字形拉变形)。
+TRACKING = {"date_y": 0.0, "date_m": -1.3, "date_d": 2.0, "date_hm": -3.1,
+            "coach": -3.1, "seat": -4.2, "price_int": 4.3, "price_dec": 0.0,
+            "id": 0.1}
 
 # 参考图逐像素标定: 名称 -> (字号px, 横向缩放, 绘制起点x, 基线y, 字体, 参考文本)
 LAYOUT = {
@@ -144,32 +174,32 @@ LAYOUT = {
     "to_name":    (125.94, 1.0907, 1277.56, 249.72, "HeiR", "济南西"),
     "to_zhan":    (68.55, 1.1467, 1701.95, 230.62, "ZS", "站"),
     "to_py":      (81.69, 0.9430, 1448.38, 332.77, "Times", "Jinanxi"),
-    "date_y":     (104.97, 0.9994, 152.68, 448.76, "CoreDS", "2025"),
+    "date_y":     (104.98, 1.0000, 156.45, 451.00, "Digits", "2025"),
     "date_yn":    (56.08, 0.9611, 355.93, 429.99, "ZS", "年"),
-    "date_m":     (103.59, 1.0159, 433.56, 447.77, "CoreDS", "06"),
+    "date_m":     (103.63, 1.0000, 438.52, 450.00, "Digits", "06"),
     "date_mn":    (62.22, 0.8869, 545.21, 431.82, "ZS", "月"),
-    "date_d":     (103.59, 1.0723, 624.39, 447.79, "CoreDS", "23"),
+    "date_d":     (104.98, 1.0000, 628.79, 450.00, "Digits", "23"),
     "date_dn":    (58.89, 1.0018, 729.99, 430.55, "ZS", "日"),
-    "date_hm":    (107.82, 1.1021, 807.49, 447.72, "CoreDS", "18:55"),
+    "date_hm":    (108.43, 1.0000, 818.38, 449.57, "Digits", "18:55"),
     "date_kai":   (55.31, 0.9936, 1062.85, 429.45, "ZS", "开"),
-    "coach":      (104.84, 1.0889, 1312.95, 446.78, "CoreDS", "13"),
+    "coach":      (104.98, 1.0000, 1323.89, 449.00, "Digits", "13"),
     "coach_che":  (58.02, 0.9336, 1414.22, 430.89, "ZS", "车"),
-    "seat":       (104.75, 1.0440, 1476.41, 446.70, "CoreDS", "16F"),
+    "seat":       (104.98, 1.0000, 1488.89, 449.00, "Digits", "16F"),
     "seat_hao":   (57.60, 0.9546, 1627.89, 428.92, "ZS", "号"),
     "price_yen":  (104.52, 0.7306, 162.48, 554.41, "Sun", "￥"),
-    "price_int":  (100.66, 1.0695, 243.57, 552.74, "CoreDS", "235."),
-    "price_dec":  (100.83, 1.1328, 430.06, 552.75, "CoreDS", "0"),
+    "price_int":  (100.40, 1.0000, 246.40, 554.60, "Digits", "235."),
+    "price_dec":  (99.60, 1.0000, 435.50, 554.00, "Digits", "0"),
     "price_yuan": (62.51, 1.0896, 481.80, 543.67, "ZS", "元"),
     "seat_class": (83.20, 1.0040, 1476.29, 541.60, "ZS", "二等座"),
     "notice":     (82.34, 1.0328, 138.82, 745.45, "ZS", "仅供报销使用"),
     "refund_fee": (82.34, 1.0328, 138.82, 637.45, "ZS", "退票费"),
-    "id":         (105.06, 0.9869, 131.52, 872.69, "CoreDS", "1101011990****1234"),
+    "id":         (104.98, 1.0000, 135.64, 875.00, "Digits", "1101011990****1234"),
     "name":       (94.88, 1.0029, 1006.14, 862.89, "ZS", "张三"),
     "box1a":      (65.03, 1.0313, 531.13, 965.00, "ZS", "报销凭证"),
     "box1b":      (64.89, 1.0365, 826.38, 964.76, "ZS", "遗失不补"),
     "box2":       (70.68, 0.9559, 474.65, 1056.67, "ZS", "退票改签时须交回车站"),
     "serial":     (85.04, 0.8105, 127.00, 1207.32, "Camb", "12345678901234567890123"),
-    "serial_jm":  (67.67, 1.0000, 1047.71, 1194.15, "Camb", "JM"),
+    "serial_jm":  (67.67, 1.0000, 973.03, 1194.15, "Camb", "JM"),
     "mark_xue":   (90.71, 1.0000, 852.65, 545.39, "ZS", "学"),
     "mark_hui":   (90.41, 1.0000, 983.75, 546.66, "ZS", "惠"),
 }
@@ -419,6 +449,32 @@ def parse_invoice(path):
     return d
 
 
+def char_width_px(ch, size_px, font_key):
+    """单个字符的推进量(页面px)。数字字段里的非数字字符按数字等宽字位推进。"""
+    if font_key == DIGIT_FONT and ch not in DIGIT_CHARS:
+        return advance_px("0", size_px, 1.0, font_key)
+    return advance_px(ch, size_px, 1.0, font_key)
+
+
+def mixed_width_px(text, size_px, font_key, sx=1.0):
+    """按 draw_text 的实际排布规则量文本宽度, 供 width_delta 等派生位置使用。
+
+    数字字段里混着非数字字符('.' ':' 'F'): 它们用回退字体渲染, 直接拿
+    pdfmetrics.stringWidth 量会得到 .notdef 的宽度, 元/派生位置就会漂。
+    """
+    if font_key != DIGIT_FONT:
+        return advance_px(text, size_px, sx, font_key)
+    return sx * sum(char_width_px(ch, size_px, font_key) for ch in text)
+
+
+def _char_render(ch, font_key):
+    """字符 -> (实际渲染字体键, 对齐微调em, 字号缩放)。回退字符见 FALLBACK 注释。"""
+    if font_key == DIGIT_FONT and ch not in DIGIT_CHARS:
+        fk, align, scale = FALLBACK.get(ch, FALLBACK_DEFAULT)
+        return fk, align, scale
+    return font_key, 0.0, 1.0
+
+
 def draw_text(c, text, key, color=INK, dx=0.0, dy=0.0, size=None, sx=None, stroke=None, track=None):
     size_px, sxf, x, base, font_key, _ = LAYOUT[key]
     if size is not None:
@@ -429,13 +485,15 @@ def draw_text(c, text, key, color=INK, dx=0.0, dy=0.0, size=None, sx=None, strok
         stroke = RED_STROKE if color is RED else STROKE_BY_FONT.get(font_key, 0.02)
     if track is None:
         track = TRACKING.get(key, 0.0)
-    if track:
+    # 数字字段逐字符绘制: 一是字距, 二是混排(非数字字符走回退字体)
+    if track or font_key == DIGIT_FONT:
         cur = x + dx
         for ch in text:
+            fk, align, scale = _char_render(ch, font_key)
             c.saveState()
             c.setFillColor(color)
-            c.setFont(font_key, size_px * PX)
-            c.translate(X(cur), Y(base + dy))
+            c.setFont(fk, size_px * scale * PX)
+            c.translate(X(cur + align * size_px), Y(base + dy))
             if sxf != 1.0:
                 c.scale(sxf, 1.0)
             if stroke:
@@ -444,8 +502,8 @@ def draw_text(c, text, key, color=INK, dx=0.0, dy=0.0, size=None, sx=None, strok
                 c._textRenderMode = 2
             c.drawString(0, 0, ch)
             c.restoreState()
-            cur += sxf * advance_px(ch, size_px, 1.0, font_key) + track
-        return sxf * advance_px(text, size_px, 1.0, font_key) + track * (len(text) - 1)
+            cur += sxf * char_width_px(ch, size_px, font_key) + track
+        return mixed_width_px(text, size_px, font_key, sxf) + track * (len(text) - 1)
     c.saveState()
     c.setFillColor(color)
     c.setFont(font_key, size_px * PX)
@@ -645,7 +703,8 @@ def build_ticket(t: Ticket, out_path: str):
 
     def width_delta(key, text):
         size_px, sxf, _, _, font_key, ref = LAYOUT[key]
-        return advance_px(text, size_px, sxf, font_key) - advance_px(ref, size_px, sxf, font_key)
+        return (mixed_width_px(text, size_px, font_key, sxf)
+                - mixed_width_px(ref, size_px, font_key, sxf))
 
     # 两字站名: 中间加一字宽空格
     from_name_s = t.from_station[0] + "\u3000" + t.from_station[1] if len(t.from_station) == 2 else t.from_station
