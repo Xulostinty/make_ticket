@@ -26,7 +26,7 @@ git clone https://github.com/Xulostinty/make_ticket.git
   - 默认虚构数据
   - `--json` 从 JSON 文件读取
   - `--invoice` 从电子发票（铁路电子客票）PDF 自动解析
-- 自动识别发票中的退票费并显示（"仅供报销使用"上方一行）
+- 自动识别发票中的**退票费 / 改签费**并显示（"仅供报销使用"上方一行）
 - 支持只输出 PNG（圆角外透明，RGBA）
 - 可关闭纸张纹理、可选用发票内二维码图片
 
@@ -46,7 +46,7 @@ pip install reportlab qrcode pillow pymupdf
 
 ```bash
 # 默认数据是一张**完全虚构的票**(北京南→上海虹桥 G1, 2026-01-01 09:00, 05车12A号, 553.0元)
-# 输出 20260101_G1_pic.pdf (YYYYMMDD_车次[_T]_pic.pdf)
+# 输出 20260101_G1_pic.pdf (YYYYMMDD_车次[_T][_G]_pic.pdf, T=含退票费 G=含改签费)
 python make_ticket.py
 
 # 指定输出并同时生成 PNG 预览
@@ -60,7 +60,7 @@ python make_ticket.py --invoice 车票/*.pdf --outdir out --png-only
 python make_ticket.py --json data.json
 
 # 从电子发票 PDF 生成（支持多张/通配符），输出到指定目录
-# 默认输出名为 YYYYMMDD_车次[_T]_pic.pdf
+# 默认输出名为 YYYYMMDD_车次[_T][_G]_pic.pdf
 python make_ticket.py --invoice 车票/*.pdf --outdir out --preview
 
 # 不绘制纸张纹理 / 不使用发票内二维码（改用程序生成）
@@ -70,7 +70,8 @@ python make_ticket.py --invoice a.pdf --no-invoice-qr
 
 ### 发票批量重命名
 
-将电子发票 PDF 重命名为 `YYYYMMDD_车次.pdf`，退票发票为 `YYYYMMDD_车次_T.pdf`：
+将电子发票 PDF 重命名为 `YYYYMMDD_车次.pdf`，退票发票为 `YYYYMMDD_车次_T.pdf`，
+改签发票为 `YYYYMMDD_车次_G.pdf`：
 
 ```bash
 python rename_invoices.py "车票目录" -n   # 预览

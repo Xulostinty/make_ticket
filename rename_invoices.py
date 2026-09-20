@@ -2,6 +2,7 @@
 """批量重命名铁路电子客票(电子发票) PDF 为  YYYYMMDD_车次.pdf
 
 退票发票(票面含退票费)命名为  YYYYMMDD_车次_T.pdf
+改签发票(票面含改签费)命名为  YYYYMMDD_车次_G.pdf
 日期取乘车日期, 车次为票面车次。
 
 用法:
@@ -19,7 +20,8 @@ import make_ticket
 def target_stem(d):
     y, m, dd = d["travel_date"]
     train = d["train"]
-    suffix = "_T" if d.get("refund_fee") is not None else ""
+    suffix = ("_T" if d.get("refund_fee") is not None else "") + \
+             ("_G" if d.get("change_fee") is not None else "")
     return "%04d%02d%02d_%s%s" % (int(y), int(m), int(dd), train, suffix)
 
 
@@ -34,7 +36,7 @@ def unique_path(path):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="将铁路电子客票 PDF 重命名为 YYYYMMDD_车次[_T].pdf")
+    ap = argparse.ArgumentParser(description="将铁路电子客票 PDF 重命名为 YYYYMMDD_车次[_T][_G].pdf")
     ap.add_argument("paths", nargs="*", default=["."],
                     help="目录 / PDF 文件 / 通配符, 默认当前目录")
     ap.add_argument("-n", "--dry-run", action="store_true", help="只打印, 不实际改名")

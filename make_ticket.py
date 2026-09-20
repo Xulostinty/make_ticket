@@ -289,6 +289,7 @@ class Ticket:
         self.serial = kw.get("serial", "12345678901234567890123")
         self.serial_suffix = kw.get("serial_suffix", "JM")
         self.refund_fee = kw.get("refund_fee")
+        self.change_fee = kw.get("change_fee")
         self.qr_data = kw.get("qr_data")
         self.qr_image = kw.get("qr_image")
         self.texture = bool(kw.get("texture", True))
@@ -324,9 +325,26 @@ class Ticket:
             serial=d.get("eticket_no") or "",
             serial_suffix="",
             refund_fee=d.get("refund_fee"),
+            change_fee=d.get("change_fee"),
             qr_image=d.get("qr") if use_qr_image else None,
             texture=True,
         )
+
+
+def word_lines(words, tol=8.0):
+    """把 PDF 的词按行归并成整行文本。
+
+    为什么需要: 发票里同一个金额常被拆成几个词(实测改签费那行是 "改签费:" + "￥0." + "50"),
+    逐词匹配会漏掉金额, 所以先按 y 中心聚成行、再把行内的词按 x 排序拼起来。
+    """
+    rows = []
+    for (x0, y0, x1, y1, w) in sorted(words, key=lambda t: (t[1] + t[3]) / 2.0):
+        cy = (y0 + y1) / 2.0
+        if rows and abs(cy - rows[-1][0]) <= tol:
+            rows[-1][1].append((x0, w))
+        else:
+            rows.append([cy, [(x0, w)]])
+    return ["".join(t for _, t in sorted(v)) for _, v in rows]
 
 
 def parse_invoice(path):
@@ -415,22 +433,30 @@ def parse_invoice(path):
     else:
         d["coach"], d["seat"], d["seat_suffix"] = None, None, None
 
-    # 退票费: 定位"退票费"标签词, 取同一行右侧的金额词; 仅出现标签无金额时记为 0
-    d["refund_fee"] = None
-    for (wx0, wy0, wx1, wy1, w) in words:
-        if w.startswith("退票费"):
-            fee = None
-            for (ax0, ay0, ax1, ay1, aw) in words:
-                if ax0 > wx0 and abs(ay0 - wy0) <= 12:
-                    mm = re.fullmatch(r"[¥￥](\d+(?:\.\d{1,2})?)", aw)
-                    if mm:
-                        fee = float(mm.group(1))
-                        break
-            d["refund_fee"] = fee if fee is not None else 0.0
-            break
+    # 费用行: 退票费 / 改签费 —— 定位标签词, 取**同一行**右侧的金额。
+    # 金额常被 PDF 拆成两个词(实测 "￥0." + "50"), 所以先按行把词拼成整行文本再匹配;
+    # 只有标签没金额 -> 记 0; 整行都没有 -> None(票面不画这一行)。
+    rows_text = word_lines(words)
 
-    m = re.search(r"[¥￥](\d+(?:\.\d{1,2})?)", flat)
-    d["price"] = float(m.group(1)) if m else None
+    def fee_of(label):
+        for s in rows_text:
+            i = s.find(label)
+            if i >= 0:
+                mm = re.search(r"[¥￥](\d+(?:\.\d{1,2})?)", s[i:])
+                return float(mm.group(1)) if mm else 0.0
+        return None
+
+    d["refund_fee"] = fee_of("退票费")
+    d["change_fee"] = fee_of("改签费")
+
+    # 票价: 文档里第一个 ￥ 金额所在的整行(与改动前一致 —— 费用专用发票里那个 ￥ 就是费用本身,
+    # 票面照旧显示它; 想改成"费用发票不显示票价"是另一个决定, 没擅自动)。
+    d["price"] = None
+    for s in rows_text:
+        mm = re.search(r"[¥￥](\d+(?:\.\d{1,2})?)", s)
+        if mm:
+            d["price"] = float(mm.group(1))
+            break
 
     d["seat_class"] = None
     for pat in CLASS_PATTERNS:
@@ -875,8 +901,14 @@ def build_ticket(t: Ticket, out_path: str):
     draw_text(c, t.seat_class, "seat_class", dx=-d_class)
 
     draw_text(c, "仅供报销使用", "notice")
-    if t.refund_fee is not None:
-        draw_text(c, "退票费", "refund_fee")
+    # 费用行: 退票费 / 改签费 共用同一处标定位置("仅供报销使用"上方一行, 3 个汉字等宽,
+    # 不用另标定)。两者极少同时出现(退票与改签互斥), 万一都有就并排画, 不动版面。
+    fee_labs = [lab for lab, v in (("退票费", t.refund_fee), ("改签费", t.change_fee))
+                if v is not None]
+    f_size, f_sx, _, _, f_font, _ = LAYOUT["refund_fee"]
+    f_step = advance_px("退票费", f_size, f_sx, f_font) + 24.0
+    for i, lab in enumerate(fee_labs):
+        draw_text(c, lab, "refund_fee", dx=i * f_step)
     draw_text(c, t.id_no, "id")
     draw_text(c, t.passenger, "name", dx=d_id)
     draw_circles(c, t)
@@ -942,10 +974,11 @@ def write_output(t, out, png_only=False, preview=False):
 
 
 def default_filename(t):
-    """默认输出文件名: YYYYMMDD_车次[_T]_pic.pdf (T 表示含退票费)"""
-    return "%04d%02d%02d_%s%s_pic.pdf" % (
+    """默认输出文件名: YYYYMMDD_车次[_T][_G]_pic.pdf (T = 含退票费, G = 含改签费)"""
+    return "%04d%02d%02d_%s%s%s_pic.pdf" % (
         t.depart.year, t.depart.month, t.depart.day, t.train_no,
-        "_T" if t.refund_fee is not None else "")
+        "_T" if t.refund_fee is not None else "",
+        "_G" if t.change_fee is not None else "")
 
 
 def main(argv=None):
