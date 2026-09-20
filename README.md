@@ -36,7 +36,8 @@ pip install reportlab qrcode pillow pymupdf
 ## 用法
 
 ```bash
-# 默认虚构数据 -> 20250623_G46_pic.pdf (YYYYMMDD_车次[_T]_pic.pdf)
+# 默认数据是一张**完全虚构的票**(北京南→上海虹桥 G1, 2026-01-01 09:00, 05车12A号, 553.0元)
+# 输出 20260101_G1_pic.pdf (YYYYMMDD_车次[_T]_pic.pdf)
 python make_ticket.py
 
 # 指定输出并同时生成 PNG 预览

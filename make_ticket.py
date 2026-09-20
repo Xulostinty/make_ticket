@@ -255,22 +255,29 @@ def advance_px(text, size_px, sx, font=None):
 
 
 class Ticket:
+    """票面数据。
+
+    **默认值是一张完全虚构的票**（北京南 → 上海虹桥 G1，2026-01-01 09:00，05车12A号，
+    553.0 元；姓名/证件号/票号也都是假的）—— 直接 `python make_ticket.py --png-only`
+    跑出来的就是这张，不含任何真实行程。真实数据请用 --json / --invoice 传入。
+    """
+
     def __init__(self, **kw):
         self.ticket_no = kw.get("ticket_no", "A00B000000")
-        self.gate = kw.get("gate", "20A")
-        self.from_station = kw.get("from_station", "合肥南")
-        self.from_pinyin = kw.get("from_pinyin", "Hefeinan")
-        self.to_station = kw.get("to_station", "济南西")
-        self.to_pinyin = kw.get("to_pinyin", "Jinanxi")
-        self.train_no = kw.get("train_no", "G46")
-        depart = kw.get("depart", "2025-06-23 18:55")
+        self.gate = kw.get("gate", "18B")
+        self.from_station = kw.get("from_station", "北京南")
+        self.from_pinyin = kw.get("from_pinyin", "Beijingnan")
+        self.to_station = kw.get("to_station", "上海虹桥")
+        self.to_pinyin = kw.get("to_pinyin", "Shanghaihongqiao")
+        self.train_no = kw.get("train_no", "G1")
+        depart = kw.get("depart", "2026-01-01 09:00")
         if isinstance(depart, str):
             depart = _dt.datetime.strptime(depart, "%Y-%m-%d %H:%M")
         self.depart = depart
-        self.coach = kw.get("coach", "13")
-        self.seat = kw.get("seat", "16F")
+        self.coach = kw.get("coach", "05")
+        self.seat = kw.get("seat", "12A")
         self.seat_suffix = kw.get("seat_suffix", "号")
-        self.price = float(kw.get("price", 235.0))
+        self.price = float(kw.get("price", 553.0))
         self.seat_class = kw.get("seat_class", "二等座")
         self.discount = bool(kw.get("discount", True))
         # 优惠标记圆圈: 默认两个都画(参考票面就是"学""惠"); 从发票来时只画发票上真有的,
