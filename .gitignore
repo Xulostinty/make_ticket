@@ -8,3 +8,6 @@ ticket.png
 *_pic.png
 *.ticket.pdf
 *.ticket.png
+
+# 调试/校验脚本的临时产物 (曾经被 git add -A 误收进来过)
+.dsh-verify/
