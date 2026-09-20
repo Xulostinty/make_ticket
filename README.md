@@ -2,6 +2,12 @@
 
 按参考图逐像素标定的火车票（铁路电子客票报销凭证）PDF 生成器，输出 85.6mm 宽的矢量 PDF，内置纸张纹理、CR 底纹、二维码、学/惠圆圈等细节。
 
+**仓库地址：<https://github.com/Xulostinty/make_ticket>**
+
+```bash
+git clone https://github.com/Xulostinty/make_ticket.git
+```
+
 > 本仓库为**脱敏版**：所有示例数据均为虚构，不含任何真实个人信息。
 > 仅供学习与纪念使用，**禁止**用于伪造票据、欺诈、逃票、商用等用途。
 
@@ -122,6 +128,14 @@ JSON 可用字段（与 `Ticket` 类一致）：
 生成脚本在 `tools/`（`glyph_shapes.py` 定义结构、`fit_struct.py` 拟合参数、`trace_centerline.py` 建库、`digitfit.py` 采集与打分）。数字字段里混排的 `.` `:` 和座位号字母走系统字体回退，回退字符的对齐量与字号缩放见 `make_ticket.py` 的 `FALLBACK`。
 
 如果你知道更接近的字体（自由或商用均可），欢迎提 Issue 告知，非常感谢！
+
+## 开发说明
+
+本项目（版式标定、自制数字字体、二维码绘制、脱敏与验证脚本）是在 **DeepSeek Harness** 里，
+用 **DeepSeek v4.1 Flash** 模型开发完成的：字形中心线结构的拟合、逐区域版式回归、
+以及字体/二维码的逐像素校验，都是在这个 harness 中与模型多轮迭代出来的。
+
+仓库地址：<https://github.com/Xulostinty/make_ticket>
 
 ## 免责声明
 
