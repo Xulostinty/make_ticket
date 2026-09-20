@@ -94,7 +94,7 @@ REGISTERED = {}
 # Color(78 / 255, 71 / 255, 87 / 255)。
 INK = Color(0.0, 0.0, 0.0)
 RED = Color(201 / 255, 107 / 255, 130 / 255)
-QR_COLOR = Color(74 / 255, 69 / 255, 90 / 255)
+QR_COLOR = Color(0.0, 0.0, 0.0)          # 二维码也纯黑(用户要求)
 BAND = Color(148 / 255, 192 / 255, 229 / 255)
 BG_STOPS = [
     (0.00, Color(188 / 255, 213 / 255, 243 / 255)),
@@ -265,6 +265,10 @@ class Ticket:
         self.price = float(kw.get("price", 235.0))
         self.seat_class = kw.get("seat_class", "二等座")
         self.discount = bool(kw.get("discount", True))
+        # 优惠标记圆圈: 默认两个都画(参考票面就是"学""惠"); 从发票来时只画发票上真有的,
+        # 见 parse_invoice 的 discount_marks。
+        _mk = kw.get("discount_marks")
+        self.discount_marks = _mk if _mk is not None else ("学惠" if self.discount else "")
         self.passenger = kw.get("passenger", "张三")
         self.id_no = kw.get("id_no", "1101011990****1234")
         self.serial = kw.get("serial", "12345678901234567890123")
@@ -299,6 +303,7 @@ class Ticket:
             price=d.get("price") if d.get("price") is not None else 0.0,
             seat_class=d.get("seat_class") or "二等座",
             discount=bool(d.get("discount")),
+            discount_marks=d.get("discount_marks"),
             passenger=d.get("passenger") or "张三",
             id_no=d.get("id_no") or "1101011990****1234",
             serial=d.get("eticket_no") or "",
@@ -419,7 +424,13 @@ def parse_invoice(path):
             d["seat_class"] = mm.group(0)
             break
 
-    d["discount"] = any(w == "学" for (*_r, w) in words)
+    # 优惠标记(学/惠): 只画发票上真印着的那个 —— 只有"学"的发票不能凭空补一个"惠"。
+    # 取"整词只由学/惠组成"的词 (发票上这两个字常各自成项, 也可能被并成一个词"学惠"),
+    # 这样 "学生票" 那种含"学"的长词不会被误判。
+    _mk = [w for (*_r, w) in words if w and all(c in "学惠" for c in w)]
+    d["discount_marks"] = "".join(ch for ch in ("学", "惠")
+                                  if any(ch in w for w in _mk))
+    d["discount"] = bool(d["discount_marks"])
 
     m = re.search(r"\d{6,}\*+\d{2,4}", flat)
     d["id_no"] = m.group(0) if m else None
@@ -642,6 +653,57 @@ def draw_dashed_box(c):
     c.restoreState()
 
 
+def qr_outline_loops(matrix):
+    """二维码暗格并集的**外轮廓闭环** (格点坐标 (i=行, j=列))。
+
+    为什么不用"逐格画小方块"或"合并成一行一行的矩形": 那两种写法都会让相邻矩形
+    **共用一条边**, 光栅化时公共边被两侧各扫一次, 留下一道浅色缝 —— 就是用户看到的
+    "每个格点都有边框"。只描并集轮廓, 内部一条边都没有, 缝根本不会产生, 而且格点
+    尺寸/黑色占比与标定值完全一致(不用靠外扩去糊缝)。
+
+    每个角点的进出边数一定是偶数(0/2/4), 4 的那处是两格仅斜角相接: 两条环路在那里
+    共用一点, 填色按奇偶规则各自数一次, 所以随便怎么配都对 (都成闭合环)。
+    矩阵必须是方阵 (二维码矩阵本来就是 n×n)。校验脚本: tools/check_qr_outline.py。
+    """
+    n = len(matrix)
+    dark = [[bool(v) for v in row] for row in matrix]
+    out = {}
+
+    def add(a, b):
+        out.setdefault(a, []).append(b)
+
+    for r in range(n):
+        for cc in range(n):
+            if not dark[r][cc]:
+                continue
+            if r == 0 or not dark[r - 1][cc]:            # 上边: 左->右
+                add((r, cc), (r, cc + 1))
+            if cc == n - 1 or not dark[r][cc + 1]:       # 右边: 上->下
+                add((r, cc + 1), (r + 1, cc + 1))
+            if r == n - 1 or not dark[r + 1][cc]:        # 下边: 右->左
+                add((r + 1, cc + 1), (r + 1, cc))
+            if cc == 0 or not dark[r][cc - 1]:           # 左边: 下->上
+                add((r + 1, cc), (r, cc))
+    loops = []
+    while out:
+        start = next(iter(out))
+        loop, cur = [start], start
+        while True:
+            nxts = out.get(cur)
+            if not nxts:
+                break
+            nxt = nxts.pop()
+            if not nxts:
+                del out[cur]
+            loop.append(nxt)
+            cur = nxt
+            if cur == start:
+                break
+        if len(loop) > 3:
+            loops.append(loop)
+    return loops
+
+
 def draw_qr(c, data):
     if qrcode is None:
         raise RuntimeError("缺少 qrcode 库, 请先 pip install qrcode")
@@ -657,19 +719,29 @@ def draw_qr(c, data):
     matrix = qr.get_matrix()
     n = len(matrix)
     mx, my = mw * (version * 4 + 17) / n, mh * (version * 4 + 17) / n
+    # 格点边界吸附到整数页面像素: 模块宽 10.121px / 高 9.97px 都不是整数, 边界落在
+    # 半像素上就会处处反锯齿。吸附后每个模块宽 10 或 11px(肉眼无差别, 照样扫),
+    # 边界都落在像素线上。
+    cxs = [int(round(x0 + k * mx)) for k in range(n + 1)]
+    cys = [int(round(y0 + k * my)) for k in range(n + 1)]
     c.saveState()
     c.setFillColor(QR_COLOR)
-    for r, row in enumerate(matrix):
-        for col, dark in enumerate(row):
-            if dark:
-                c.rect(X(x0 + col * mx), Y(y0 + (r + 1) * my), mx * PX, my * PX, stroke=0, fill=1)
+    p = c.beginPath()
+    for loop in qr_outline_loops(matrix):
+        i, j = loop[0]
+        p.moveTo(X(cxs[j]), Y(cys[i]))
+        for (i, j) in loop[1:]:
+            p.lineTo(X(cxs[j]), Y(cys[i]))
+        p.close()
+    c.drawPath(p, stroke=0, fill=1)
     c.restoreState()
 
 
 def draw_circles(c, t: Ticket):
-    if not t.discount:
-        return
+    marks = getattr(t, "discount_marks", "学惠" if t.discount else "")
     for cx, cy, r, ch in CIRCLES:
+        if ch not in marks:            # 发票上没印的标记不补画
+            continue
         c.saveState()
         c.setStrokeColor(INK)
         c.setLineWidth(CIRCLE_W * PX)
