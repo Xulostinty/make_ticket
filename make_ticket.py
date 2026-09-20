@@ -116,6 +116,14 @@ CIRCLE_W = 5.0
 
 QR_BOX = (1558.0, 757.5, 4, 10.121, 9.97)
 
+# 票号后面那个"JM"离票号末端的间隔 (页面px, 推进量口径)。
+# 参考图: 票号推进量末端 931.1, JM 左缘 973.0 -> 41.9。
+# 必须做成**固定间隔**: 原来是用"实际票号推进量 − LAYOUT 参考串推进量"去推 JM 的位置,
+# 只要 LAYOUT 里的参考串和实际票号不是同一个串就会算错 —— 本仓库把参考串换成了脱敏
+# 票号(23 位)而 serial_jm 的 x 还是按真票号(22 位)标的, dx 于是算成 0, JM 直接压在
+# 最后一位数字上("JM 和数字重复")。
+SERIAL_JM_GAP = 41.9
+
 CR_Y = 1133.0
 CR_SIZE, CR_SX = 30.0, 2.60
 CR_START, CR_STEP = 23.0, 44.5
@@ -871,12 +879,11 @@ def build_ticket(t: Ticket, out_path: str):
     draw_text(c, "退票改签时须交回车站", "box2")
 
     ser_size, ser_sx = fit_scale(t.serial, "serial")
-    draw_text(c, t.serial, "serial", size=ser_size, sx=ser_sx)
+    ser_adv = draw_text(c, t.serial, "serial", size=ser_size, sx=ser_sx)
     if t.serial_suffix:
-        ser_font = LAYOUT["serial"][4]
-        adv_new = advance_px(t.serial, ser_size, ser_sx, ser_font)
-        adv_ref = advance_px(LAYOUT["serial"][5], LAYOUT["serial"][0], LAYOUT["serial"][1], ser_font)
-        draw_text(c, t.serial_suffix, "serial_jm", dx=adv_new - adv_ref)
+        # JM 的位置 = 实际票号末端 + 固定间隔 (见 SERIAL_JM_GAP 的注释)
+        dx = (LAYOUT["serial"][2] + ser_adv + SERIAL_JM_GAP) - LAYOUT["serial_jm"][2]
+        draw_text(c, t.serial_suffix, "serial_jm", dx=dx)
 
     if t.qr_image:
         draw_qr_image(c, t.qr_image)
