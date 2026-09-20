@@ -73,22 +73,24 @@ JSON 可用字段（与 `Ticket` 类一致）：
 ```json
 {
   "ticket_no": "A00B000000",
-  "gate": "20A",
-  "from_station": "合肥南", "from_pinyin": "Hefeinan",
-  "to_station": "济南西", "to_pinyin": "Jinanxi",
-  "train_no": "G46", "depart": "2025-06-23 18:55",
-  "coach": "13", "seat": "16F", "seat_suffix": "号",
-  "price": 235.0, "seat_class": "二等座", "discount": true,
+  "gate": "18B",
+  "from_station": "北京南", "from_pinyin": "Beijingnan",
+  "to_station": "上海虹桥", "to_pinyin": "Shanghaihongqiao",
+  "train_no": "G1", "depart": "2026-01-01 09:00",
+  "coach": "05", "seat": "12A", "seat_suffix": "号",
+  "price": 553.0, "seat_class": "二等座", "discount": true,
   "passenger": "张三", "id_no": "1101011990****1234",
   "serial": "12345678901234567890123", "serial_suffix": "JM"
 }
 ```
 
+（上面全是虚构数据；默认值就是这一张票。）
+
 ## 字体
 
 | 用途 | 字体 |
 |---|---|
-| 站名（合肥南 / 济南西） | 黑体 SimHei（标准字重） |
+| 站名（北京南 / 上海虹桥） | 黑体 SimHei（标准字重） |
 | 中文正文（年/月/日/开/车/号/元/检票/席别/姓名/框内文字等） | 华文中宋 STZhongsong |
 | 日期 / 时间 / 座位 / 票价 / 证件号数字 | CRTicket Digits（本项目自制，见下） |
 | ￥ | 宋体 SimSun |
